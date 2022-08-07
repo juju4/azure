@@ -63,6 +63,18 @@ options:
     app_settings:
         description:
             - Dictionary containing application settings.
+    https_only:
+        description:
+            - Configures web site to accept only https requests.
+        type: bool
+    min_tls_version:
+        description:
+            - The minimum TLS encryption version required for the app.
+        type: str
+        choices:
+            - '1.0'
+            - '1.1'
+            - '1.2'
     state:
         description:
             - Assert the state of the Function App. Use C(present) to create or update a Function App and C(absent) to delete.
@@ -194,6 +206,13 @@ class AzureRMFunctionApp(AzureRMModuleBase):
             container_settings=dict(
                 type='dict',
                 options=container_settings_spec
+            ),
+            https_only=dict(
+                type='bool'
+            ),
+            min_tls_version=dict(
+                type='str',
+                choices=['1.0', '1.1', '1.2'],
             )
         )
 
@@ -210,6 +229,10 @@ class AzureRMFunctionApp(AzureRMModuleBase):
         self.app_settings = None
         self.plan = None
         self.container_settings = None
+        self.https_only = None
+
+        self.site_config_updatable_properties = ["min_tls_version"]
+        self.updatable_properties = ["https_only"]
 
         required_if = [('state', 'present', ['storage_account'])]
 
@@ -221,8 +244,13 @@ class AzureRMFunctionApp(AzureRMModuleBase):
 
     def exec_module(self, **kwargs):
 
-        for key in self.module_arg_spec:
-            setattr(self, key, kwargs[key])
+        for key in list(self.module_arg_spec.keys()) + ['tags']:
+            if hasattr(self, key):
+                setattr(self, key, kwargs[key])
+            elif kwargs[key] is not None:
+                if key in ["min_tls_version"]:
+                    self.site_config[key] = kwargs[key]
+
         if self.app_settings is None:
             self.app_settings = dict()
 
@@ -297,6 +325,9 @@ class AzureRMFunctionApp(AzureRMModuleBase):
             # set linux fx version
             if linux_fx_version:
                 function_app.site_config.linux_fx_version = linux_fx_version
+
+            if self.https_only is not None:
+                self.site.https_only = self.https_only
 
             if self.check_mode:
                 self.results['state'] = function_app.as_dict()
